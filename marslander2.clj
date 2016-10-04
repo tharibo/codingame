@@ -6,19 +6,54 @@
     (println value))
   value)
 
-(def optimalSpeed -40)
-(def minPower 0)
-(def maxPower 4)
-(defn computePower [currentPower vSpeed]
-  (debug-value (min maxPower (inc currentPower)))
-  (debug-value (str vSpeed optimalSpeed))
-  (if (<= vSpeed optimalSpeed)
-    (min maxPower (inc currentPower))
-    (max minPower (dec currentPower))
-  )
-)
+(def MAXY 2800)
+(def G -3.711)
 
-(defn computeRotation [currentRotation currentHSpeed minTargetX maxTargetX])
+(def optimalSpeed -35)
+(def minPower 1)
+(def maxPower 4)
+(defn computePower [[x y :as pos] currentPower currentRotation targetRotation vSpeed minTargetX maxTargetX targetY]
+  (debug-value (str vSpeed " " optimalSpeed))
+  (debug-value (str x " " minTargetX " " maxTargetX))
+  (let [maxPower (if (> (+ y vSpeed G) MAXY) 0 maxPower)
+        minPower (if (< (+ y vSpeed G) targetY) maxPower minPower)]
+    (debug-value ["minMax Power" minPower maxPower])
+    (if (> (Math/abs currentRotation) 20)
+      (if (= (> 0 currentRotation) (< 0 targetRotation))
+        minPower
+        maxPower)
+      (if (or (<= vSpeed optimalSpeed)
+              (or (< x minTargetX) (> x maxTargetX)))
+        (min maxPower (inc currentPower))
+        (if (< 5 (- vSpeed optimalSpeed))
+          3
+          (max minPower (dec currentPower)))))))
+
+(defn computeRotation [[x y :as pos] currentRotation hSpeed vSpeed minTargetX maxTargetX targetY]
+  (let [halfWidth (/ (- maxTargetX minTargetX) 2)
+        middleX (+ minTargetX halfWidth)
+        distanceToMid (- middleX x)
+        inTarget? (or (> x maxTargetX) (< x minTargetX))
+        ratio (max -1.0 (min 1.0 (/ distanceToMid (float halfWidth))))
+        secondsToTargetY (/ (- targetY y) (if (= 0 vSpeed) 0.000001 vSpeed))
+        secondsToTargetX (/ distanceToMid (if (= 0 hSpeed) 0.000001 hSpeed))
+        targetHSpeed (cond (< (+ y vSpeed G) targetY) 0
+                           (and (> (Math/abs hSpeed) 30) (< secondsToTargetY secondsToTargetX)) 0
+                           (< x minTargetX) (* 0.05 (- minTargetX (+ x hSpeed)))
+                           (> x maxTargetX) (* 0.05 (- maxTargetX (+ x hSpeed)))
+                           :default 0)
+        speedRatio (max -1.0 (min 1.0 (if (and (> (Math/abs hSpeed) 20) (= (> 0 targetHSpeed) (< 0 hSpeed)))
+                                        (if (> 0 targetHSpeed) -1.0 1.0)
+                                        (/ (- targetHSpeed hSpeed) 100.0))))
+        targetAngle (cond (and inTarget? (< (+ y vSpeed G) targetY)) (* speedRatio -45.0)
+                          (and (< (Math/abs hSpeed) 20) (<= (- y targetY) (- (* 4 optimalSpeed)))) 0
+                          :default (* speedRatio -45.0))
+        ]
+    (debug-value [x minTargetX maxTargetX])
+    (debug-value [y vSpeed targetY])
+    (debug-value [targetHSpeed speedRatio])
+    (debug-value targetAngle)
+    (int targetAngle)))
 
 (defn readLand []
   (let [surfaceN (read)]
@@ -33,24 +68,14 @@
         (recur (dec i)
                (conj surface [landX landY])))))))
 
-(defn landing-zones [surface]
-  (let [grouped-by-height (reduce (fn [coll new]
-                                    (let [new-height (second new)
-                                          current-height (second (first (last coll)))]
-                                      (if (= new-height current-height)
-                                        (update-in coll [(dec (count coll))] conj new)
-                                        (conj coll [new])))) [] surface)]
-    (filter #(> (count %) 1) grouped-by-height)
-    ;grouped-by-height
-    ))
-
-(def new [0 0])
-(def coll [])
-(second (first (first coll)))
-(conj coll [new])
-
-(def test-surface [[0 50] [1000 20] [1500 20] [2000 99] [3000 199] [4000 200] [6000 200]])
-(landing-zones test-surface)
+(defn first-flat-area [surface]
+  (loop [remaining-points (rest surface)
+         starting-point (first surface)]
+    (let [point (first remaining-points)]
+      (if (= (second starting-point) (second point))
+        [starting-point point]
+        (recur (rest remaining-points)
+               point)))))
 
 (defn -main [& args]
   (let [surface (debug-value (readLand))]
@@ -71,8 +96,11 @@
         ; (binding [*out* *err*]
         ;   (println "Debug messages..."))
 
-        (let [newPower (computePower power vSpeed)
-              newRotation 0]
+        (let [
+              [[x1 y1] [x2 y2]] (first-flat-area surface)
+              newRotation (computeRotation [X Y] rotate hSpeed vSpeed x1 x2 y1)
+              newPower (computePower [X Y] power rotate newRotation vSpeed x1 x2 y1)
+              ]
           ; rotate power. rotate is the desired rotation angle. power is the desired thrust power.
           (println (str newRotation " " newPower))
         )
