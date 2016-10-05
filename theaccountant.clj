@@ -9,6 +9,10 @@
     (println value))
   value)
 
+(defn square [x]
+  ;(reduce * (repeat x 2)))
+  (Math/pow x 2))
+
 (defn sqrt-dist [[x1 y1] [x2 y2]]
   (Math/sqrt (+ (square (- x2 x1)) (square (- y2 y1)))))
 
@@ -38,10 +42,29 @@
                       enemies)))]
     (assoc state :data data :enemies enemies)))
 
+(defn compute-all-distances [data enemies])
 
+(defn compute-game-state [state]
+  (let [wpos (:pos state)
+        distances (compute-all-distances (:data state) (:enemies state))
+        enemies-dist-wolf (map #(assoc % :wdist (dist wpos (:pos %))) (:enemies state))]
+    (assoc state
+           :distances distances
+           :enemies (sort-by :wdist enemies-dist-wolf))))
 
 (defn -main [& args]
   (while true
-    (let [state (read-game-state)]
+    (let [state (compute-game-state (read-game-state))]
+      (debug-value (:data state))
+      (debug-value (:enemies state))
+
       ; MOVE x y or SHOOT id
-      (println "MOVE 8000 4500"))))
+      (let [living-enemies (filter #(< 0 (:life %)) (:enemies state))
+            target (or (first living-enemies) {:pos [0 0 ] :id 0 :life 0 :wdist 10000})
+            x (first (:pos target))
+            y (second (:pos target))
+            id (:id target)
+            d (:wdist target)]
+        (if (and (> 5000 d) (< 0 (:life target)))
+          (println "SHOOT" id)
+          (println "MOVE " x y))))))
